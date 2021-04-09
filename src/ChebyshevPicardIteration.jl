@@ -6,4 +6,6 @@ using StaticArrays
 include("ChebyshevPolynomials.jl")
 include("Integrator.jl")
 
+export Integrate
+
 end
