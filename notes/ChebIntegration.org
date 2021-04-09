@@ -1,0 +1,3 @@
+#+TITLE: Chebyshev Picard Integration Notes
+
+* Initialize

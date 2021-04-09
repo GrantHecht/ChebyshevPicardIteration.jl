@@ -1,5 +1,9 @@
 module ChebyshevPicardIteration
 
-# Write your package code here.
+using LinearAlgebra
+using StaticArrays
+
+include("ChebyshevPolynomials.jl")
+include("Integrator.jl")
 
 end
