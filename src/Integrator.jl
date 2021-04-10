@@ -15,51 +15,26 @@ function Integrate(f, x0, tspan, N, tol, imax)
     τs = SizedVector{N + 1}(zeros(N + 1))
     @inbounds for i in 0:N; τs[i + 1] = -cos(i*π/N); end
 
-    # Initialize Matricies and Tensors
-    Cx   = SizedMatrix{N+1, N+1}(zeros(N+1, N+1))
-    Cα   = SizedMatrix{N+1, N+1}(zeros(N+1, N+1))
-    S    = SizedMatrix{N+1, N+1}(zeros(N+1, N+1))
-    R    = SizedMatrix{N+1, N+1}(zeros(N+1, N+1))
-    V    = SizedMatrix{N+1, N+1}(zeros(N+1, N+1))
-    X0   = SizedMatrix{N+1, M}(zeros(N+1, M))
+    # Initialize Constant Matricies
+    Cx = SizedMatrix{N+1, N+1}(zeros(N+1, N+1))
+    Cα = SizedMatrix{N+1, N+1}(zeros(N+1, N+1))
+    X0 = SizedMatrix{N+1, M}(zeros(N+1, M))
+    initCx!(Cx, τs)
+    initCα!(Cα, Cx)
+    X0[1,:] .= x0
+
+    # Initialize Requred Matrices
     Xold = SizedMatrix{N+1, M}(zeros(N+1, M))
     Xnew = SizedMatrix{N+1, M}(zeros(N+1, M))
     G    = SizedMatrix{N+1, M}(zeros(N+1, M))
     β    = SizedMatrix{N+1, M}(zeros(N+1, M))
 
-    # Fill Matricies
-    X0[1,:]   .= x0
-    Xold[1,:] .= x0
-    R[1,1]     = 1
-    R[2,2]     = 1/2
-    S[1,1]     = 1
-    S[1,2]     = -1/2
-    S[2,1]     = 1
-    V[1,1]     = 1/N
-    V[N+1,N+1] = 1/N
-    Cx[:,1]   .= 1
-    Cx[:,2]   .= τs
-    @inbounds for i in 2:N
-        R[i+1, i+1] = 1/(2*i)
-        V[i, i]     = 2/N
-        S[i+1, i]   = 1
-        @inbounds for j in 0:N
-            Cx[j+1, i+1] = T(τs[j+1], i)
-        end
-        if i > 2
-            S[1, i]   = (1/(i-2) - 1/i)*(-1)^i
-            S[i-1, i] = -1
-        end
-    end
-    mul!(Cα, Cx, V)
-    mul!(V, S, Cα)
-    mul!(Cα, R, V)
-
     # Create Transposed Pointer to Xold
     XoldT = Xold'
 
     # Begin Integration Loop
-    stop = false
+    Xold[1,:] .= x0
+    stop  = false
     e_old = Inf
     e_new = Inf
     i = 0
@@ -99,5 +74,59 @@ function Integrate(f, x0, tspan, N, tol, imax)
             e_old = e_new
         end
     end
-    return Xnew
+
+    return (ω₁ .+ ω₂.*τs, Xnew)
+end
+
+# Initialize Chebyshev Polynomial Matrix Cx
+function initCx!(Cx::AbstractArray, τs::AbstractArray)
+    dims = size(Cx)
+    @inbounds for j in 1:dims[2]
+        if j > 2
+            for i in 1:dims[1]
+                Cx[i,j] = T(τs[i], j - 1)
+            end
+        elseif j == 2
+            for i in 1:dims[1]
+                Cx[i,j] = τs[i]
+            end
+        else
+            for i in 1:dims[1]
+                Cx[i,j] = 1
+            end
+        end
+    end
+end
+
+# Initialize Chebyshev Matrix Cα
+function initCα!(Cα::AbstractArray, Cx::AbstractArray)
+    dims = size(Cα)
+    N = dims[2]
+
+    # Initialize Temporary Matricies
+    S = SizedMatrix{N, N}(zeros(N, N))
+    R = SizedMatrix{N, N}(zeros(N, N))
+    V = SizedMatrix{N, N}(zeros(N, N))
+
+    # Fill Matricies
+    N -= 1
+    R[1,1]     = 1
+    R[2,2]     = 1/2
+    S[1,1]     = 1
+    S[1,2]     = -1/2
+    S[2,1]     = 1
+    V[1,1]     = 1/N
+    V[N+1,N+1] = 1/N
+    @inbounds Threads.@threads for i in 2:N
+        R[i+1, i+1] = 1/(2*i)
+        V[i, i]     = 2/N
+        S[i+1, i]   = 1
+        if i > 2
+            S[1, i]   = (1/(i-2) - 1/i)*(-1)^i
+            S[i-1, i] = -1
+        end
+    end
+    mul!(Cα, Cx, V)
+    mul!(V, S, Cα)
+    mul!(Cα, R, V)
 end
