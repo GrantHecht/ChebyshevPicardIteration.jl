@@ -48,9 +48,9 @@ function Integrate(f, x0, tspan, N, M, tol, imax)
         println(iter)
 
         # Compute forcing function
-        @inbounds Threads.@threads for i in 1:M+1
+        @inbounds for i in 1:M+1
             L == 1 ? G[i,1]  = g(τs[i], Xold[i]) :
-                     G[i,:] .= g(τs[i], @view(XoldT[:, i+1]))
+                     G[i,:] .= g(τs[i], @view(XoldT[:, i]))
         end
 
         # Update Coefficients
