@@ -1,132 +1,160 @@
 
-function Integrate(f, x0, tspan, N, tol, imax)
+function Integrate(f, x0, tspan, N, M, tol, imax)
 
-    # Get length of x0
-    M = length(x0)
+    # Get length of state vector
+    L = length(x0)
 
-    # Transform independant variable
-    ω₁ = (tspan[2] + tspan[1])/2
-    ω₂ = (tspan[2] - tspan[1])/2
+    # Transformation of independant variable
+    ω₁ = 0.5*(tspan[2] + tspan[1])
+    ω₂ = 0.5*(tspan[2] - tspan[1])
 
-    # Define new function of tau
-    g(τ,x) = ω₂*f(ω₁ + ω₂*τ, x)
+    g(τ,x) =   ω₂*f(τ,x)
 
-    # Compute CGL nodes
-    τs = SizedVector{N + 1}(zeros(N + 1))
-    @inbounds for i in 0:N; τs[i + 1] = -cos(i*π/N); end
+    # Compute Chebyshev-Gauss-Lobatto Nodes
+    τs = SizedVector{M + 1}(zeros(M + 1))
+    @inbounds for j in 0:M
+        τs[j + 1] = -cos(j*π/M)
+    end
 
-    # Initialize Constant Matricies
-    Cx = SizedMatrix{N+1, N+1}(zeros(N+1, N+1))
-    Cα = SizedMatrix{N+1, N+1}(zeros(N+1, N+1))
-    X0 = SizedMatrix{N+1, M}(zeros(N+1, M))
-    initCx!(Cx, τs)
-    initCα!(Cα, Cx)
-    X0[1,:] .= x0
+    # Compute constant matricies
+    Cx  = SizedMatrix{M + 1, N + 1}(zeros(M + 1, N + 1))
+    ChebyshevInterpMat!(Cx, τs)
+    CI1 = SizedMatrix{N + 1, N}(zeros(N + 1, N))
+    initCI1!(CI1)
+    Cf  = SizedMatrix{N, M + 1}(zeros(N, M + 1))
+    initCf!(Cf, τs)
+    C   = SizedMatrix{N + 1, M + 1}(zeros(N + 1, M + 1))
+    mul!(C, CI1, Cf)
 
-    # Initialize Requred Matrices
-    Xold = SizedMatrix{N+1, M}(zeros(N+1, M))
-    Xnew = SizedMatrix{N+1, M}(zeros(N+1, M))
-    G    = SizedMatrix{N+1, M}(zeros(N+1, M))
-    β    = SizedMatrix{N+1, M}(zeros(N+1, M))
-
-    # Create Transposed Pointer to Xold
+    # Initialize required matricies
+    Xold  = SizedMatrix{M + 1, L}(zeros(M + 1, L))
     XoldT = Xold'
+    Xnew  = SizedMatrix{M + 1, L}(zeros(M + 1, L))
+    X0    = SizedMatrix{N + 1, L}(zeros(M + 1, L))
+    X0[1,:] .= x0
+    G     = SizedMatrix{M + 1, L}(zeros(M + 1, L))
+    β     = SizedMatrix{N + 1, L}(zeros(N + 1, L))
 
-    # Begin Integration Loop
+    # Set Initial Guess for Xold (Could provide as input in future)
     Xold[1,:] .= x0
-    stop  = false
-    e_old = Inf
-    e_new = Inf
-    i = 0
+
+    # Begin integration loop
+    stop = false
+    eold = Inf
+    enew = Inf
+    iter = 0
     while !stop
+        iter += 1
+        println(iter)
 
-        # Increment Iteration Counter
-        i += 1
-
-        # Compute Forcing Function
-        @inbounds for i in 0:N
-            M == 1 ? G[i+1,1]  = g(τs[i+1], Xold[i+1]) :
-                     G[i+1,:] .= g(τs[i+1], XoldT[:, i+1])
+        # Compute forcing function
+        @inbounds for i in 1:M+1
+            L == 1 ? G[i,1]  = g(τs[i], Xold[i]) :
+                     G[i,:] .= g(τs[i], @view(XoldT[:, i+1]))
         end
 
         # Update Coefficients
-        mul!(β, Cα, G)
+        mul!(β, C, G)
         β .+= X0
 
         # Update State
         mul!(Xnew, Cx, β)
 
-        # Compute Error
-        e_new = 0
-        for i in 0:N
-            for j in 1:M
-                temp =  abs(Xnew[i+1,j] - Xold[i+1,j])
-                if temp > e_new; e_new = temp; end
+        # Compute error
+        enew = 0
+        for col in 1:L
+            for row in 1:M+1
+                temp = Xnew[row,col] - Xold[row,col]
+                if temp > enew
+                    enew = temp
+                end
             end
         end
-        e_new = sqrt(e_new)/((N+1)*M)
 
-        # Check for Convergence
-        if (e_new <= tol && e_old <= tol) || i >= imax
+        if (enew <= tol && eold <= tol) || iter >= imax
             stop = true
         else
             Xold .= Xnew
-            e_old = e_new
+            eold  = enew
         end
     end
 
-    return (ω₁ .+ ω₂.*τs, Xnew)
+    return (ω₁ .+ ω₂*τs, Xnew)
 end
 
-# Initialize Chebyshev Polynomial Matrix Cx
-function initCx!(Cx::AbstractArray, τs::AbstractArray)
-    dims = size(Cx)
-    @inbounds for j in 1:dims[2]
-        if j > 2
-            for i in 1:dims[1]
-                Cx[i,j] = T(τs[i], j - 1)
-            end
-        elseif j == 2
-            for i in 1:dims[1]
-                Cx[i,j] = τs[i]
-            end
-        else
-            for i in 1:dims[1]
-                Cx[i,j] = 1
-            end
-        end
-    end
-end
-
-# Initialize Chebyshev Matrix Cα
-function initCα!(Cα::AbstractArray, Cx::AbstractArray)
-    dims = size(Cα)
+function initCI1!(CI1)
+    # Get N
+    dims = size(CI1)
     N = dims[2]
 
-    # Initialize Temporary Matricies
-    S = SizedMatrix{N, N}(zeros(N, N))
-    R = SizedMatrix{N, N}(zeros(N, N))
-    V = SizedMatrix{N, N}(zeros(N, N))
+    # Initialize R and S
+    R = Diagonal(SizedVector{N + 1}(zeros(N + 1)))
+    S = SizedMatrix{N + 1, N}(zeros(N + 1, N))
 
     # Fill Matricies
-    N -= 1
-    R[1,1]     = 1
-    R[2,2]     = 1/2
-    S[1,1]     = 1
-    S[1,2]     = -1/2
-    S[2,1]     = 1
-    V[1,1]     = 1/N
-    V[N+1,N+1] = 1/N
-    @inbounds Threads.@threads for i in 2:N
-        R[i+1, i+1] = 1/(2*i)
-        V[i, i]     = 2/N
-        S[i+1, i]   = 1
-        if i > 2
-            S[1, i]   = (1/(i-2) - 1/i)*(-1)^i
-            S[i-1, i] = -1
+    R[1,1] = 1
+    R[2,2] = 0.5
+    S[1,1] = 0.5
+    S[1,2] = -0.25
+    S[1,N] = (-1)^(N+1)/(2*N)
+    S[2,1] = 2
+    S[2,3] = -1
+    @inbounds for i in 3:N + 1
+        R[i,i] = 1/(2*(i - 1))
+        S[i,i - 1] = 1
+        if i < N
+            S[i,i + 1] = -1
+            S[1,i] = (1/(2*(i - 2)) - 1/(2*i))*(-1)^i
         end
     end
-    mul!(Cα, Cx, V)
-    mul!(V, S, Cα)
-    mul!(Cα, R, V)
+
+    # Fill CI1
+    LinearAlgebra.lmul!(R, S)
+    CI1 .= S
+end
+
+function initCf!(Cf, τs)
+    # Get N and M
+    dims = size(Cf)
+    N = dims[1]
+    M = dims[2] - 1
+
+    # Set p variable depending on number of nodes and check Cf size for validity
+    p = 1
+    if M > N
+        p = 2
+    elseif N > M
+        throw(ArgumentError("Improper size of Cf matrix!"))
+    end
+
+    # Initialize temporary matricies
+    V  = Diagonal(SizedVector{N}(zeros(N)))
+    W  = Diagonal(SizedVector{M + 1}(zeros(M + 1)))
+    Tm = SizedMatrix{N, M + 1}(zeros(N, M + 1))
+
+    # Fill T
+    T!(Tm, τs)
+
+    # Fill V
+    @inbounds for i in 1:N
+        # Get numerator
+        i == 1 ? num = 1 : i == N ? num = p : num = 2
+
+        # Set value
+        V[i, i] = num/M
+    end
+
+    # Fill W
+    @inbounds for i in 1:M + 1
+        # Get val
+        i == 1 ? val = 0.5 : i == M + 1 ? val = 0.5 : val = 1
+
+        # Set value
+        W[i, i] = val
+    end
+
+    # Compute Cf
+    LinearAlgebra.rmul!(Tm, W)
+    LinearAlgebra.lmul!(V, Tm)
+    Cf .= Tm
 end
