@@ -8,7 +8,7 @@ function Integrate(f, x0, tspan, N, M, tol, imax)
     ω₁ = 0.5*(tspan[2] + tspan[1])
     ω₂ = 0.5*(tspan[2] - tspan[1])
 
-    g(τ,x) =   ω₂*f(τ,x)
+    g(τ,x) =   ω₂*f(ω₁ + ω₂*τ,x)
 
     # Compute Chebyshev-Gauss-Lobatto Nodes
     τs = SizedVector{M + 1}(zeros(M + 1))
@@ -48,17 +48,19 @@ function Integrate(f, x0, tspan, N, M, tol, imax)
         println(iter)
 
         # Compute forcing function
-        @inbounds for i in 1:M+1
+        @inbounds Threads.@threads for i in 1:M+1
             L == 1 ? G[i,1]  = g(τs[i], Xold[i]) :
                      G[i,:] .= g(τs[i], @view(XoldT[:, i+1]))
         end
 
         # Update Coefficients
-        mul!(β, C, G)
-        β .+= X0
+        #mul!(β, C, G)
+        #β .= β .+ X0
+        β = X0 + C*G
 
         # Update State
-        mul!(Xnew, Cx, β)
+        #mul!(Xnew, Cx, β)
+        Xnew = Cx*β
 
         # Compute error
         enew = 0
@@ -96,21 +98,19 @@ function initCI1!(CI1)
     R[2,2] = 0.5
     S[1,1] = 0.5
     S[1,2] = -0.25
-    S[1,N] = (-1)^(N+1)/(2*N)
     S[2,1] = 2
     S[2,3] = -1
     @inbounds for i in 3:N + 1
         R[i,i] = 1/(2*(i - 1))
         S[i,i - 1] = 1
+        S[1,i] = (1/(2*(i - 2)) - 1/(2*i))*(-1)^i
         if i < N
             S[i,i + 1] = -1
-            S[1,i] = (1/(2*(i - 2)) - 1/(2*i))*(-1)^i
         end
     end
 
     # Fill CI1
-    LinearAlgebra.lmul!(R, S)
-    CI1 .= S
+    CI1 .= R*S
 end
 
 function initCf!(Cf, τs)
@@ -154,7 +154,5 @@ function initCf!(Cf, τs)
     end
 
     # Compute Cf
-    LinearAlgebra.rmul!(Tm, W)
-    LinearAlgebra.lmul!(V, Tm)
-    Cf .= Tm
+    Cf .= V*Tm*W
 end
