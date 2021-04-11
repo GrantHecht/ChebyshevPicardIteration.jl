@@ -30,7 +30,7 @@ function Integrate(f, x0, tspan, N, M, tol, imax)
     Xold  = SizedMatrix{M + 1, L}(zeros(M + 1, L))
     XoldT = Xold'
     Xnew  = SizedMatrix{M + 1, L}(zeros(M + 1, L))
-    X0    = SizedMatrix{N + 1, L}(zeros(M + 1, L))
+    X0    = SizedMatrix{N + 1, L}(zeros(N + 1, L))
     X0[1,:] .= x0
     G     = SizedMatrix{M + 1, L}(zeros(M + 1, L))
     β     = SizedMatrix{N + 1, L}(zeros(N + 1, L))
@@ -54,12 +54,9 @@ function Integrate(f, x0, tspan, N, M, tol, imax)
         end
 
         # Update Coefficients
-        #mul!(β, C, G)
-        #β .= β .+ X0
         β = X0 + C*G
 
         # Update State
-        #mul!(Xnew, Cx, β)
         Xnew = Cx*β
 
         # Compute error
