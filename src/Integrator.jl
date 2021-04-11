@@ -54,10 +54,13 @@ function Integrate(f, x0, tspan, N, M, tol, imax)
         end
 
         # Update Coefficients
-        β = X0 + C*G
+        #β = X0 + C*G
+        mul!(β,C,G)
+        β .= β + X0
 
         # Update State
-        Xnew = Cx*β
+        #Xnew = Cx*β
+        mul!(Xnew, Cx, β)
 
         # Compute error
         enew = 0
@@ -107,7 +110,9 @@ function initCI1!(CI1)
     end
 
     # Fill CI1
-    CI1 .= R*S
+    #CI1 .= R*S
+    lmul!(R,S)
+    CI1 .= S
 end
 
 function initCf!(Cf, τs)
@@ -151,5 +156,8 @@ function initCf!(Cf, τs)
     end
 
     # Compute Cf
-    Cf .= V*Tm*W
+    #Cf .= V*Tm*W
+    rmul!(Tm,W)
+    lmul!(V,Tm)
+    Cf .= Tm
 end
