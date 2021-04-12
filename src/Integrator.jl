@@ -96,16 +96,18 @@ function initCI1!(CI1)
     # Fill Matricies
     R[1,1] = 1
     R[2,2] = 0.5
-    S[1,1] = 0.5
+    S[1,1] = 1
     S[1,2] = -0.25
     S[2,1] = 2
     S[2,3] = -1
     @inbounds for i in 3:N + 1
         R[i,i] = 1/(2*(i - 1))
         S[i,i - 1] = 1
-        S[1,i] = (1/(2*(i - 2)) - 1/(2*i))*(-1)^i
         if i < N
             S[i,i + 1] = -1
+        end
+        if i < N + 1
+            S[1,i] = (1/(2*(i - 2)) - 1/(2*i))*(-1)^i
         end
     end
 
